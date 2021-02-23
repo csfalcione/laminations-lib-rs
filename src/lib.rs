@@ -45,57 +45,11 @@ pub mod laminations {
 
     impl<T: GenInt> UnitNumber<T> for UnitFraction<T> {
         fn parse_nary(base: T, s: &str) -> Result<Self, String> {
-            let zero = T::from(0);
-            let one = T::from(1);
-            let ten = T::from(10);
-
-            let parts: Vec<&str> = s.split('_').collect();
-
-            if parts.len() > 2 {
-                return Err(format!("`{}` contains more than one underscore", s));
-            }
-
-            let digit_splitter = if base < ten { "" } else { "," };
-
-            let parse_digits = |digits: &str| -> Result<Vec<T>, String> {
-                digits
-                    .split(digit_splitter)
-                    .filter(|digit| digit.len() > 0)
-                    .map(|digit: &str| {
-                        digit
-                            .parse::<T>()
-                            .map_err(|_| format!("{}: `{}` is not numerical", s, digit))
-                    })
-                    .collect()
-            };
-
-            let exact_digits = parse_digits(parts[0])?;
-            let repeating_digits = parse_digits(parts.get(1).unwrap_or(&""))?;
-
-            let get_repeating_denominator = || -> T {
-                let result = pow(base, repeating_digits.len()) - one;
-                if result == zero {
-                    return one;
-                }
-                result
-            };
-
-            let value_from_digits = |digits: Vec<T>| -> T {
-                digits
-                    .iter()
-                    .rev()
-                    .fold((zero, one), |(sum, exp), &digit| {
-                        (sum + digit * exp, exp * base)
-                    })
-                    .0
-            };
-
-            let repeating_denominator = get_repeating_denominator();
-            let denominator = repeating_denominator * pow(base, exact_digits.len());
-            let numerator = repeating_denominator * value_from_digits(exact_digits)
-                + value_from_digits(repeating_digits);
-
-            Ok(Self::new(numerator, denominator))
+            parse_digit_parts(base, s)
+                .map(|(exact_digits, repeating_digits)| {
+                    nary_parts_to_rational(base, exact_digits, repeating_digits)
+                })
+                .map(|rational| Self::new(rational.0, rational.1))
         }
     }
 
@@ -111,6 +65,69 @@ pub mod laminations {
         fn cmp(&self, other: &Self) -> Ordering {
             self.0.cmp(&other.0)
         }
+    }
+
+    pub fn parse_digit_parts<T: GenInt>(base: T, s: &str) -> Result<(Vec<T>, Vec<T>), String> {
+        let ten = T::from(10);
+
+        let parts: Vec<&str> = s.split('_').collect();
+
+        if parts.len() > 2 {
+            return Err(format!("`{}` contains more than one underscore", s));
+        }
+
+        let digit_splitter = if base < ten { "" } else { "," };
+
+        let parse_digits = |digits: &str| -> Result<Vec<T>, String> {
+            digits
+                .split(digit_splitter)
+                .filter(|digit| digit.len() > 0)
+                .map(|digit: &str| {
+                    digit
+                        .parse::<T>()
+                        .map_err(|_| format!("{}: `{}` is not numerical", s, digit))
+                })
+                .collect()
+        };
+
+        Ok((
+            parse_digits(parts[0])?,
+            parse_digits(parts.get(1).unwrap_or(&""))?,
+        ))
+    }
+
+    pub fn nary_parts_to_rational<T: GenInt>(
+        base: T,
+        exact_digits: Vec<T>,
+        repeating_digits: Vec<T>,
+    ) -> (T, T) {
+        let zero = T::from(0);
+        let one = T::from(1);
+
+        let get_repeating_denominator = || -> T {
+            let result = pow(base, repeating_digits.len()) - one;
+            if result == zero {
+                return one;
+            }
+            result
+        };
+
+        let value_from_digits = |digits: Vec<T>| -> T {
+            digits
+                .iter()
+                .rev()
+                .fold((zero, one), |(sum, exp), &digit| {
+                    (sum + digit * exp, exp * base)
+                })
+                .0
+        };
+
+        let repeating_denominator = get_repeating_denominator();
+        let denominator = repeating_denominator * pow(base, exact_digits.len());
+        let numerator = repeating_denominator * value_from_digits(exact_digits)
+            + value_from_digits(repeating_digits);
+
+        (numerator, denominator)
     }
 
     #[cfg(test)]
